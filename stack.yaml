@@ -1,0 +1,263 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources: 
+  SugarMonitor:
+    Type: AWS::IoT::Thing
+  SugarMonitorCert: 
+    Type: AWS::IoT::Certificate
+    Properties: 
+      CertificateSigningRequest: 
+        Ref: #TODO
+      Status: 
+        Ref: #TODO
+  SugarMonitorPrincAttach: 
+    Type: AWS::IoT::ThingPrincipalAttachment
+    Properties: 
+      ThingName: 
+        Ref: SugarMonitor
+      Principal: !GetAtt SugarMonitorCert.Arn
+  SugarMonitorTopicRule: 
+    Type: AWS::IoT::TopicRule
+    Properties: 
+      TopicRulePayload: 
+        RuleDisabled: false
+        Sql: >-
+          SELECT * FROM 'slider'
+        Actions: 
+          - 
+            Kinesis:
+              RoleArn: !GetAtt SugarMonitorTopicRuleRole.Arn
+              StreamName: String
+  SugarMonitorTopicRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: iot.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "putrecord"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action: "firehose:PutRecord"
+                Resource: !GetAtt SugarMonitorFirehose.Arn
+  SugarMonitorFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties: 
+      S3DestinationConfiguration: 
+        BufferingHints: 
+          IntervalInSeconds: 60
+          SizeInMBs: 1
+        CompressionFormat: UNCOMPRESSED
+        RoleARN: !GetAtt SugarMonitorFirehoseRole.Arn
+        BucketARN: !GetAtt SugarMonitorS3.Arn 
+  SugarMonitorFirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: firehose.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "writetobucket"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action:
+                  - "s3:AbortMultipartUpload"
+                  - "s3:GetBucketLocation"
+                  - "s3:GetObject"
+                  - "s3:ListBucket"
+                  - "s3:ListBucketMultipartUploads"
+                  - "s3:PutObject"
+                Resource: !GetAtt SugarMonitorS3.Arn
+  SugarMonitorS3:
+    Type: AWS::S3::Bucket
+  SugarMonitorKinesisAnalytics:
+    Type: AWS::KinesisAnalytics::Application
+    Properties:
+      ApplicationCode: #TODO
+      Inputs:
+        - NamePrefix: "SugarMonitor"
+          InputSchema:
+            RecordColumns:
+             - Name: "PatientID"
+               SqlType: "VARCHAR(16)"
+             - Name: "DeviceID"
+               SqlType: "INTEGER"
+             - Name: "COL_TimeStamp"
+               SqlType: "TIMESTAMP"
+             - Name: "COL_Value"
+               SqlType: "DOUBLE"
+             - Name: "Type"
+               SqlType: "VARCHAR"
+             - Name: "Unit"
+               SqlType: "VARCHAR"
+             - Name: "GeoData"
+               SqlType: "VARCHAR"
+            RecordFormat:
+              RecordFormatType: "JSON"
+              MappingParameters:
+                JSONMappingParameters:
+                  RecordRowPath: "$"
+          KinesisStreamsInput:
+            ResourceARN: !GetAtt SugarMonitorFirehose.Arn
+            RoleARN: !GetAtt SugarMonitorAnalyticsRole.Arn
+  SugarMonitorAnalyticsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: kinesisanalytics.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "readfirehose"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action:
+                  - "firehose:DescribeStream",
+                  - "firehose:GetShardIterator",
+                  - "firehose:GetRecords",
+                  - "firehose:ListShards"
+                Resource: !GetAtt SugarMonitorFirehose.Arn
+  SugarMonitorAnalyticsOutput:
+    Type: AWS::KinesisAnalytics::ApplicationOutput
+      Properties:
+        ApplicationName: !Ref SugarMonitorKinesisAnalytics
+        Output:
+          DestinationSchema:
+            RecordFormatType: "JSON"
+          KinesisStreamsOutput:
+            ResourceARN: !GetAtt SugarMonitorLambdaTrigger.Arn
+            RoleARN: !GetAtt KinesisAnalyticsRole.Arn
+  SugarMonitorLambdaTrigger: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      Handler: "index.handler"
+      Role: !GetAtt SugarMonitorLambdaTriggerRole.Arn
+      Code:
+        ZipFile: >
+          import json
+          import boto3
+          import botocore
+          import base64
+          import datetime
+
+          def lambda_handler(event, context):
+              lockminutes = 50
+              bucket = 'guardian-angel-patients'
+              key = 'patient0.json'
+              s3 = boto3.resource('s3')
+              # get PatientID from event triggered 
+              patRec = json.dumps(event)
+              b64 = json.loads(patRec)['records'][0]['data']
+              decoded = base64.b64decode(b64)
+              patientData = json.loads(decoded)
+              pID = patientData['PatientID']
+              print(pID)
+              # get list of Patients from S3 json file
+              key = pID + '.json'
+              response = s3.Object(bucket, key).get()
+              patRecJson = response['Body'].read().decode('utf-8')
+              json_content = json.loads(patRecJson)
+              doctorN = json_content['Doctor#']
+              patientN = json_content['Patient#']
+              Doctor = json_content['Doctor']
+              Name = json_content['Name']
+              # check if timeout
+              try:
+                timeout = s3.Object(bucket, pID+'.lock').get()
+                lmodified = timeout['LastModified'] #Here was a typo
+                print(lmodified)
+                flag=0
+                #Works now. Just test and fix if required
+                if (lmodified + datetime.timedelta(minutes=lockminutes)) > datetime.datetime.now(datetime.timezone.utc):
+                  print("STOP")
+                else:
+                  print(datetime.datetime.now(datetime.timezone.utc))
+                  print(datetime.timedelta(minutes=10))
+                  print(lmodified)
+                  print("GO")
+                  flag=1
+                  newFile = s3.Object(bucket, pID+'.lock')
+                  newFile.put(Body="null")
+              except botocore.exceptions.ClientError as e:
+                print("nofile" + Name)
+                newFile = s3.Object(bucket, pID+'.lock')
+                newFile.put(Body="null")
+                print("created")
+                flag=1
+              if(flag==1):
+                connect = boto3.client('connect')
+                response = connect.start_outbound_voice_contact(
+                    DestinationPhoneNumber=patientN,
+                    ContactFlowId='65033d65-a089-45c0-b5fd-b85be642777a',
+                    InstanceId='385dc872-a924-432a-b25f-517246febbe4',
+                    SourcePhoneNumber='+442382149365',
+                    Attributes =  {
+                      "doctorName": Doctor,
+                      "patientName": Name,
+                      "doctorPhoneNumber": doctorN
+                    }
+                )
+              return {
+                  'statusCode': 200
+              }
+      Runtime: "python3.7"
+      Timeout: 25
+  SugarMonitorLambdaTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "callconnect"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action:
+                  - "connect:*"
+                Resource: *
+              - 
+                Effect: "Allow"
+                Action:
+                  - "s3:AbortMultipartUpload"
+                  - "s3:GetBucketLocation"
+                  - "s3:GetObject"
+                  - "s3:ListBucket"
+                  - "s3:ListBucketMultipartUploads"
+                  - "s3:PutObject"
+                Resource: !GetAtt SugarMonitorPatientsS3.Arn
+  SugarMonitorPatientsS3:
+    Type: AWS::S3::Bucket
