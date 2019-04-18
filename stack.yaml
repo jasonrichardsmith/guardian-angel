@@ -1,20 +1,22 @@
 AWSTemplateFormatVersion: "2010-09-09"
+#Parameters:
+#  CSRID:
+#    Type: String
 Resources: 
   SugarMonitor:
     Type: AWS::IoT::Thing
-  SugarMonitorCert: 
-    Type: AWS::IoT::Certificate
-    Properties: 
-      CertificateSigningRequest: 
-        Ref: #TODO
-      Status: 
-        Ref: #TODO
-  SugarMonitorPrincAttach: 
-    Type: AWS::IoT::ThingPrincipalAttachment
-    Properties: 
-      ThingName: 
-        Ref: SugarMonitor
-      Principal: !GetAtt SugarMonitorCert.Arn
+    #SugarMonitorCert: 
+    #Type: AWS::IoT::Certificate
+    #Properties: 
+    # CertificateId: 
+    #      Ref: CSRID
+    #  Status: ACTIVE 
+    #SugarMonitorPrincAttach: 
+    #Type: AWS::IoT::ThingPrincipalAttachment
+    #Properties: 
+    #  ThingName: 
+    #    Ref: SugarMonitor
+    #  Principal: !GetAtt SugarMonitorCert.Arn
   SugarMonitorTopicRule: 
     Type: AWS::IoT::TopicRule
     Properties: 
@@ -34,7 +36,7 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            AWS: iot.amazonaws.com
+            Service: iot.amazonaws.com
           Action:
           - sts:AssumeRole
       Path: "/"
@@ -65,7 +67,7 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            AWS: firehose.amazonaws.com
+            Service: firehose.amazonaws.com
           Action:
           - sts:AssumeRole
       Path: "/"
@@ -90,33 +92,101 @@ Resources:
   SugarMonitorKinesisAnalytics:
     Type: AWS::KinesisAnalytics::Application
     Properties:
-      ApplicationCode: #TODO
+      ApplicationCode:
+        -- ** Anomaly detection **
+        -- Compute an anomaly score for each record in the source stream using Random Cut Forest
+        -- Creates a temporary stream and defines a schema
+        CREATE OR REPLACE STREAM "MONITOR_STREAM" (
+           "PatientID"        varchar(16),
+           "DeviceID"        INTEGER,
+           "Type"        varchar(16),
+           "COL_Value"        DOUBLE,
+           "ANOMALY_SCORE"  DOUBLE);
+        CREATE OR REPLACE STREAM "TEMP_STREAM" (
+           "PatientID"        varchar(16),
+           "DeviceID"        INTEGER,
+           "Type"        varchar(16),
+           "COL_Value"        DOUBLE,
+           "ANOMALY_SCORE"  DOUBLE);
+        -- Creates an output stream and defines a schema
+        CREATE OR REPLACE STREAM "DESTINATION_SQL_STREAM" (
+           "PatientID"        varchar(16),
+           "DeviceID"        INTEGER,
+           "Type"        varchar(16),
+           "COL_Value"        DOUBLE,
+           "ANOMALY_SCORE"  DOUBLE);
+        -- Creates an trigger count stream and defines a schema   
+        CREATE OR REPLACE STREAM "TRIGGER_COUNT_STREAM" (
+           "PatientID"        varchar(16),
+           "DeviceID"        INTEGER,
+           "Type"        varchar(16),
+           "COL_Value"        DOUBLE,
+           "ANOMALY_SCORE"  DOUBLE,
+           "trigger_count" INTEGER);
+         
+        CREATE OR REPLACE PUMP "MONITOR_PUMP" AS INSERT INTO "MONITOR_STREAM"
+        SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM
+          TABLE(RANDOM_CUT_FOREST(
+            CURSOR(SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value" FROM "SOURCE_SQL_STREAM_001"),    
+                           5,
+                           50,
+                           100,
+                           10
+          )
+        );
+        -- Compute an anomaly score for each record in the source stream
+        -- using Random Cut Forest
+        CREATE OR REPLACE PUMP "STREAM_PUMP" AS INSERT INTO "TEMP_STREAM"
+        SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM "MONITOR_STREAM" where "ANOMALY_SCORE" > 1;
+        CREATE OR REPLACE PUMP "trigger_count_pump" AS INSERT INTO "TRIGGER_COUNT_STREAM"
+        SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE", "trigger_count"
+        FROM (
+            SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE", COUNT(*) OVER W1 as "trigger_count"
+            FROM "TEMP_STREAM"
+            --window to perform aggregations over last 10 minutes to keep track of triggers
+            WINDOW W1 AS (PARTITION BY "PatientID" RANGE INTERVAL '10' MINUTE PRECEDING)
+        )
+        WHERE "trigger_count" >= 1;
+        -- Sort records by descending anomaly score, insert into output stream
+         CREATE OR REPLACE PUMP "OUTPUT_PUMP" AS INSERT INTO "DESTINATION_SQL_STREAM"
+         SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM "TRIGGER_COUNT_STREAM" where "trigger_count" <= 1
+         ORDER BY FLOOR("TRIGGER_COUNT_STREAM".ROWTIME TO SECOND), ANOMALY_SCORE DESC;
+        -- CREATE OR REPLACE PUMP "OUTPUT_PUMP" AS INSERT INTO "DESTINATION_SQL_STREAM"
+        -- SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM "MONITOR_STREAM" where "COL_Value" <= 3.5 OR "COL_Value" >= 7
+        -- ORDER BY FLOOR("MONITOR_STREAM".ROWTIME TO SECOND), ANOMALY_SCORE DESC;
       Inputs:
-        - NamePrefix: "SugarMonitor"
-          InputSchema:
-            RecordColumns:
-             - Name: "PatientID"
-               SqlType: "VARCHAR(16)"
-             - Name: "DeviceID"
-               SqlType: "INTEGER"
-             - Name: "COL_TimeStamp"
-               SqlType: "TIMESTAMP"
-             - Name: "COL_Value"
-               SqlType: "DOUBLE"
-             - Name: "Type"
-               SqlType: "VARCHAR"
-             - Name: "Unit"
-               SqlType: "VARCHAR"
-             - Name: "GeoData"
-               SqlType: "VARCHAR"
-            RecordFormat:
-              RecordFormatType: "JSON"
-              MappingParameters:
-                JSONMappingParameters:
-                  RecordRowPath: "$"
-          KinesisStreamsInput:
-            ResourceARN: !GetAtt SugarMonitorFirehose.Arn
-            RoleARN: !GetAtt SugarMonitorAnalyticsRole.Arn
+      - NamePrefix: "SugarMonitor"
+        InputSchema:
+          RecordColumns:
+           - Name: "PatientID"
+             SqlType: "VARCHAR(16)"
+             Mapping: "$.PatientID"
+           - Name: "DeviceID"
+             SqlType: "INTEGER"
+             Mapping: "$.DeviceID"
+           - Name: "COL_TimeStamp"
+             SqlType: "TIMESTAMP"
+             Mapping: "$.Timestamp"
+           - Name: "COL_Value"
+             SqlType: "DOUBLE"
+             Mapping: "$.Value"
+           - Name: "Type"
+             SqlType: "VARCHAR"
+             Mapping: "$.Type"
+           - Name: "Unit"
+             SqlType: "VARCHAR"
+             Mapping: "$.Unit"
+           - Name: "GeoData"
+             SqlType: "VARCHAR"
+             Mapping: "$.GeoData"
+          RecordFormat:
+            RecordFormatType: "JSON"
+            MappingParameters:
+              JSONMappingParameters:
+                RecordRowPath: "$"
+        KinesisFirehoseInput:
+          ResourceARN: !GetAtt SugarMonitorFirehose.Arn
+          RoleARN: !GetAtt SugarMonitorAnalyticsRole.Arn
   SugarMonitorAnalyticsRole:
     Type: AWS::IAM::Role
     Properties:
@@ -124,7 +194,7 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            AWS: kinesisanalytics.amazonaws.com
+            Service: kinesisanalytics.amazonaws.com
           Action:
           - sts:AssumeRole
       Path: "/"
@@ -137,21 +207,21 @@ Resources:
               - 
                 Effect: "Allow"
                 Action:
-                  - "firehose:DescribeStream",
-                  - "firehose:GetShardIterator",
-                  - "firehose:GetRecords",
+                  - "firehose:DescribeStream"
+                  - "firehose:GetShardIterator"
+                  - "firehose:GetRecords"
                   - "firehose:ListShards"
                 Resource: !GetAtt SugarMonitorFirehose.Arn
   SugarMonitorAnalyticsOutput:
     Type: AWS::KinesisAnalytics::ApplicationOutput
-      Properties:
-        ApplicationName: !Ref SugarMonitorKinesisAnalytics
-        Output:
-          DestinationSchema:
-            RecordFormatType: "JSON"
-          KinesisStreamsOutput:
-            ResourceARN: !GetAtt SugarMonitorLambdaTrigger.Arn
-            RoleARN: !GetAtt KinesisAnalyticsRole.Arn
+    Properties:
+      ApplicationName: !Ref SugarMonitorKinesisAnalytics
+      Output:
+        DestinationSchema:
+          RecordFormatType: "JSON"
+        KinesisStreamsOutput:
+          ResourceARN: !GetAtt SugarMonitorLambdaTrigger.Arn
+          RoleARN: !GetAtt SugarMonitorAnalyticsRole.Arn
   SugarMonitorLambdaTrigger: 
     Type: "AWS::Lambda::Function"
     Properties: 
@@ -234,7 +304,7 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            AWS: lambda.amazonaws.com
+            Service: lambda.amazonaws.com
           Action:
           - sts:AssumeRole
       Path: "/"
@@ -248,7 +318,7 @@ Resources:
                 Effect: "Allow"
                 Action:
                   - "connect:*"
-                Resource: *
+                Resource: "*"
               - 
                 Effect: "Allow"
                 Action:
