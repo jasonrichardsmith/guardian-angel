@@ -171,13 +171,13 @@ Resources:
              SqlType: "DOUBLE"
              Mapping: "$.Value"
            - Name: "Type"
-             SqlType: "VARCHAR"
+             SqlType: "VARCHAR(16)"
              Mapping: "$.Type"
            - Name: "Unit"
-             SqlType: "VARCHAR"
+             SqlType: "VARCHAR(8)"
              Mapping: "$.Unit"
            - Name: "GeoData"
-             SqlType: "VARCHAR"
+             SqlType: "VARCHAR(32)"
              Mapping: "$.GeoData"
           RecordFormat:
             RecordFormatType: "JSON"
@@ -212,6 +212,11 @@ Resources:
                   - "firehose:GetRecords"
                   - "firehose:ListShards"
                 Resource: !GetAtt SugarMonitorFirehose.Arn
+              - 
+                Effect: "Allow"
+                Action:
+                  - "lambda:*"
+                Resource: !GetAtt SugarMonitorLambdaTrigger.Arn
   SugarMonitorAnalyticsOutput:
     Type: AWS::KinesisAnalytics::ApplicationOutput
     Properties:
@@ -219,7 +224,7 @@ Resources:
       Output:
         DestinationSchema:
           RecordFormatType: "JSON"
-        KinesisStreamsOutput:
+        LambdaOutput:
           ResourceARN: !GetAtt SugarMonitorLambdaTrigger.Arn
           RoleARN: !GetAtt SugarMonitorAnalyticsRole.Arn
   SugarMonitorLambdaTrigger: 
