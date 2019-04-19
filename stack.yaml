@@ -5,18 +5,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Resources: 
   SugarMonitor:
     Type: AWS::IoT::Thing
-    #SugarMonitorCert: 
-    #Type: AWS::IoT::Certificate
-    #Properties: 
-    # CertificateId: 
-    #      Ref: CSRID
-    #  Status: ACTIVE 
-    #SugarMonitorPrincAttach: 
-    #Type: AWS::IoT::ThingPrincipalAttachment
-    #Properties: 
-    #  ThingName: 
-    #    Ref: SugarMonitor
-    #  Principal: !GetAtt SugarMonitorCert.Arn
   SugarMonitorTopicRule: 
     Type: AWS::IoT::TopicRule
     Properties: 
@@ -235,12 +223,16 @@ Resources:
       Code:
         ZipFile: >
           import json
+
           import boto3
+
           import botocore
+
           import base64
+
           import datetime
 
-          def lambda_handler(event, context):
+          def handler(event, context):
               lockminutes = 50
               bucket = 'guardian-angel-patients'
               key = 'patient0.json'
@@ -316,7 +308,7 @@ Resources:
       Policies: 
         - 
           PolicyName: "callconnect"
-          PolicyDocument: 
+          PolicyDocument:
             Version: "2012-10-17"
             Statement: 
               - 
@@ -336,3 +328,44 @@ Resources:
                 Resource: !GetAtt SugarMonitorPatientsS3.Arn
   SugarMonitorPatientsS3:
     Type: AWS::S3::Bucket
+  SugarMonitorIdPool:
+    Type: "AWS::Cognito::IdentityPool"
+    Properties:
+      AllowUnauthenticatedIdentities: true
+      CognitoEvents:
+          SyncTrigger: !GetAtt SugarMonitorLambdaSync.Arn
+  SugarMonitorPoolRoleAttach:
+    Type: "AWS::Cognito::IdentityPoolRoleAttachment"
+    Properties:
+      IdentityPoolId: !Ref SugarMonitorIdPool
+      Roles:
+        unauthenticated: !GetAtt SugarMonitorIdPoolRole.Arn
+        authenticated: !GetAtt SugarMonitorIdPoolRole.Arn
+  SugarMonitorIdPoolRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated: cognito-identity.amazonaws.com
+          Action:
+          - sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              cognito-identity.amazonaws.com:aud: !Ref SugarMonitorIdPool
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "cognito"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action:
+                  - "mobileanalytics:PutEvents"
+                  - "cognito-sync:*"
+                  - "cognito-identity:*"
+                  - "iot:*"
+                Resource: "*"
