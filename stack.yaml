@@ -14,9 +14,9 @@ Resources:
           SELECT * FROM 'slider'
         Actions: 
           - 
-            Kinesis:
+            Firehose:
               RoleArn: !GetAtt SugarMonitorTopicRuleRole.Arn
-              StreamName: String
+              DeliveryStreamName: !Ref SugarMonitorFirehose
   SugarMonitorTopicRuleRole:
     Type: AWS::IAM::Role
     Properties:
@@ -80,7 +80,7 @@ Resources:
   SugarMonitorKinesisAnalytics:
     Type: AWS::KinesisAnalytics::Application
     Properties:
-      ApplicationCode:
+      ApplicationCode: !Sub |
         -- ** Anomaly detection **
         -- Compute an anomaly score for each record in the source stream using Random Cut Forest
         -- Creates a temporary stream and defines a schema
@@ -115,7 +115,7 @@ Resources:
         CREATE OR REPLACE PUMP "MONITOR_PUMP" AS INSERT INTO "MONITOR_STREAM"
         SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM
           TABLE(RANDOM_CUT_FOREST(
-            CURSOR(SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value" FROM "SOURCE_SQL_STREAM_001"),    
+            CURSOR(SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value" FROM "SugarMonitor_001"),    
                            5,
                            50,
                            100,
@@ -137,7 +137,7 @@ Resources:
         WHERE "trigger_count" >= 1;
         -- Sort records by descending anomaly score, insert into output stream
          CREATE OR REPLACE PUMP "OUTPUT_PUMP" AS INSERT INTO "DESTINATION_SQL_STREAM"
-         SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM "TRIGGER_COUNT_STREAM" where "trigger_count" <= 1
+         SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM "TRIGGER_COUNT_STREAM" where "trigger_count" >= 8
          ORDER BY FLOOR("TRIGGER_COUNT_STREAM".ROWTIME TO SECOND), ANOMALY_SCORE DESC;
         -- CREATE OR REPLACE PUMP "OUTPUT_PUMP" AS INSERT INTO "DESTINATION_SQL_STREAM"
         -- SELECT STREAM "PatientID", "DeviceID", "Type", "COL_Value", "ANOMALY_SCORE" FROM "MONITOR_STREAM" where "COL_Value" <= 3.5 OR "COL_Value" >= 7
@@ -148,10 +148,10 @@ Resources:
           RecordColumns:
            - Name: "PatientID"
              SqlType: "VARCHAR(16)"
-             Mapping: "$.PatientID"
+             Mapping: "$.PatientId"
            - Name: "DeviceID"
              SqlType: "INTEGER"
-             Mapping: "$.DeviceID"
+             Mapping: "$.DeviceId"
            - Name: "COL_TimeStamp"
              SqlType: "TIMESTAMP"
              Mapping: "$.Timestamp"
@@ -215,6 +215,8 @@ Resources:
         LambdaOutput:
           ResourceARN: !GetAtt SugarMonitorLambdaTrigger.Arn
           RoleARN: !GetAtt SugarMonitorAnalyticsRole.Arn
+        Name: DESTINATION_SQL_STREAM
+
   SugarMonitorLambdaTrigger: 
     Type: "AWS::Lambda::Function"
     Properties: 
@@ -223,6 +225,8 @@ Resources:
       Code:
         ZipFile: >
           import json
+          
+          import os
 
           import boto3
 
@@ -234,7 +238,7 @@ Resources:
 
           def handler(event, context):
               lockminutes = 50
-              bucket = 'guardian-angel-patients'
+              bucket = os.environ['BUCKET']
               key = 'patient0.json'
               s3 = boto3.resource('s3')
               # get PatientID from event triggered 
@@ -294,6 +298,9 @@ Resources:
               }
       Runtime: "python3.7"
       Timeout: 25
+      Environment:
+        Variables:
+          BUCKET: !GetAtt SugarMonitorPatientsS3.Arn 
   SugarMonitorLambdaTriggerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -315,6 +322,7 @@ Resources:
                 Effect: "Allow"
                 Action:
                   - "connect:*"
+                  - "logs:*"
                 Resource: "*"
               - 
                 Effect: "Allow"
@@ -332,8 +340,6 @@ Resources:
     Type: "AWS::Cognito::IdentityPool"
     Properties:
       AllowUnauthenticatedIdentities: true
-      CognitoEvents:
-          SyncTrigger: !GetAtt SugarMonitorLambdaSync.Arn
   SugarMonitorPoolRoleAttach:
     Type: "AWS::Cognito::IdentityPoolRoleAttachment"
     Properties:
@@ -369,3 +375,9 @@ Resources:
                   - "cognito-identity:*"
                   - "iot:*"
                 Resource: "*"
+Outputs:
+  IdPool:
+    Description: Cognito IdPool
+    Value: !Ref SugarMonitorIdPool 
+    Export:
+      Name: IdPool

@@ -5,7 +5,7 @@ import { AWSIoTProvider } from '@aws-amplify/pubsub/lib/Providers';
 
 Amplify.configure({
 	Auth: {
-		identityPoolId: 'eu-west-1:5e32641a-a98b-484b-8894-2be4e6a86769',
+		identityPoolId: 'eu-west-1:1a960834-5dba-4133-9e79-28ec53c7327e',
 		region: 'eu-west-1',
 		mandatorySignIn: false,
 	}
@@ -42,17 +42,16 @@ export default class App extends React.Component {
   }
   tick = () => {
     value = this.state.value
-    console.log(value);
     message = {
 	    PatientId: "test",
 	    DeviceId: "123",
-	    Timestamp: date.getTime(),
+	    Timestamp: new Date(),
 	    Value: value,
 	    Type: "sugar",
 	    Unit: "sugar",
 	    GeoData: "none",
     }
-    PubSub.publish('slider', { msg: JSON.stringify(message) });
+    PubSub.publish('slider', message );
   }
   render() {
     return (
