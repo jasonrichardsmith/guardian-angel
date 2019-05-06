@@ -5,8 +5,8 @@ import { AWSIoTProvider } from '@aws-amplify/pubsub/lib/Providers';
 
 Amplify.configure({
 	Auth: {
-		identityPoolId: 'eu-west-1:1a960834-5dba-4133-9e79-28ec53c7327e',
-		region: 'eu-west-1',
+		identityPoolId: 'us-east-1:74eef97c-0a74-4267-8fbc-fa6fcedcef90',
+		region: 'us-east-1',
 		mandatorySignIn: false,
 	}
 });
@@ -23,8 +23,8 @@ Auth.currentUserInfo().then((info) => {
 
 
 Amplify.addPluggable(new AWSIoTProvider({
-     aws_pubsub_region: 'eu-west-1',
-     aws_pubsub_endpoint: 'wss://a2wo5aphjz787n-ats.iot.eu-west-1.amazonaws.com/mqtt'
+     aws_pubsub_region: 'us-east-1',
+     aws_pubsub_endpoint: 'wss://a2wo5aphjz787n-ats.iot.us-east-1.amazonaws.com/mqtt'
 }));
 
 
@@ -43,7 +43,7 @@ export default class App extends React.Component {
   tick = () => {
     value = this.state.value
     message = {
-	    PatientId: "test",
+	    PatientId: "patient0",
 	    DeviceId: "123",
 	    Timestamp: new Date(),
 	    Value: value,
@@ -56,7 +56,7 @@ export default class App extends React.Component {
   render() {
     return (
       <View style={styles.container}>
-        <Text>Hello, Open up App.js to start working on your app!</Text>
+        <Text>Move the slider to simulate changes in glucose level</Text>
 	<Slider
 	        value={this.state.value}
 		style={{width: 200, height: 40}}

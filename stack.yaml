@@ -1,7 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
-#Parameters:
-#  CSRID:
-#    Type: String
+Parameters: 
+  ContactFlowId: 
+    Type: String
+  SourcePhoneNumber: 
+    Type: String
+  ConnectInstance: 
+    Type: String
 Resources: 
   SugarMonitor:
     Type: AWS::IoT::Thing
@@ -238,8 +242,12 @@ Resources:
 
           def handler(event, context):
               lockminutes = 50
-              bucket = os.environ['BUCKET']
-              key = 'patient0.json'
+              arn = os.environ['BUCKET']
+              sourcephone = os.environ['SOURCEPHONE']
+              contactflowid = os.environ['CONTACTFLOWID']
+              connectinstance = os.environ['CONNECTINSTANCE']
+              elements = arn.split(':')
+              bucket = elements[5]
               s3 = boto3.resource('s3')
               # get PatientID from event triggered 
               patRec = json.dumps(event)
@@ -268,7 +276,7 @@ Resources:
                   print("STOP")
                 else:
                   print(datetime.datetime.now(datetime.timezone.utc))
-                  print(datetime.timedelta(minutes=10))
+                  print(datetime.timedelta(minutes=3))
                   print(lmodified)
                   print("GO")
                   flag=1
@@ -284,9 +292,9 @@ Resources:
                 connect = boto3.client('connect')
                 response = connect.start_outbound_voice_contact(
                     DestinationPhoneNumber=patientN,
-                    ContactFlowId='65033d65-a089-45c0-b5fd-b85be642777a',
-                    InstanceId='385dc872-a924-432a-b25f-517246febbe4',
-                    SourcePhoneNumber='+442382149365',
+                    ContactFlowId=contactflowid,
+                    InstanceId=connectinstance,
+                    SourcePhoneNumber=sourcephone,
                     Attributes =  {
                       "doctorName": Doctor,
                       "patientName": Name,
@@ -301,6 +309,9 @@ Resources:
       Environment:
         Variables:
           BUCKET: !GetAtt SugarMonitorPatientsS3.Arn 
+          SOURCEPHONE: !Ref SourcePhone
+          CONTACTFLOW: !Ref ContactFlowId
+          CONNECTINSTANCE: !Ref ConnectInstance
   SugarMonitorLambdaTriggerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -334,6 +345,12 @@ Resources:
                   - "s3:ListBucketMultipartUploads"
                   - "s3:PutObject"
                 Resource: !GetAtt SugarMonitorPatientsS3.Arn
+  SugarMonitorLambdaTriggerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: 
+        Fn::Join: ["/", ["/aws/lambda", {"Ref": "SugarMonitorLambdaTrigger"}]]
+      RetentionInDays: 1
   SugarMonitorPatientsS3:
     Type: AWS::S3::Bucket
   SugarMonitorIdPool:
