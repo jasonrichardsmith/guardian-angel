@@ -12,7 +12,7 @@
       "parameters": [
         {
           "name": "Text",
-          "value": "Hello doctor $.Attributes.doctorName . We have detected an alarm on low blood sugar levels for your patient $.Attributes.patientName",
+          "value": "Hello doctor $.Attributes.doctorName . We have detected an alarm for your patient $.Attributes.patientName",
           "namespace": null
         },
         {

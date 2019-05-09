@@ -110,7 +110,7 @@
       "parameters": [
         {
           "name": "Text",
-          "value": "Hello $.Attributes.patientName We have received low sugar alert. Please confirm you are feeling fine by pressing zero or saying \"yes\"",
+          "value": "Hello $.Attributes.patientName We have received an alert. Please confirm you are feeling fine by pressing zero or saying \"yes\"",
           "namespace": null
         },
         {
