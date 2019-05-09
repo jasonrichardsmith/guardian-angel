@@ -56,7 +56,7 @@
       "parameters": [
         {
           "name": "FunctionArn",
-          "value": "arn:aws:lambda:us-east-1:967057312161:function:callDoctor"
+          "value": "ADD CALL DOCTOR ARN HERE"
         },
         {
           "name": "TimeLimit",
@@ -179,7 +179,7 @@
       "y": 20
     },
     "snapToGrid": false,
-    "name": "Medicare",
+    "name": "GuardianAngelCallPatient",
     "description": null,
     "type": "contactFlow",
     "status": "published",
