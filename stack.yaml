@@ -309,7 +309,7 @@ Resources:
       Environment:
         Variables:
           BUCKET: !GetAtt SugarMonitorPatientsS3.Arn 
-          SOURCEPHONE: !Ref SourcePhone
+          SOURCEPHONE: !Ref SourcePhoneNumber
           CONTACTFLOW: !Ref ContactFlowId
           CONNECTINSTANCE: !Ref ConnectInstance
   SugarMonitorLambdaTriggerRole:
