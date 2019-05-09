@@ -11,7 +11,7 @@ Resources:
     Type: "AWS::Lambda::Function"
     Properties: 
       Handler: "index.handler"
-      Role: !GetAtt SugarMonitorLambdaTriggerRole.Arn
+      Role: !GetAtt CallDoctorLambdaTriggerRole.Arn
       Code:
         ZipFile: >
           const AWS = require('aws-sdk');
@@ -48,9 +48,19 @@ Resources:
       Timeout: 25
       Environment:
         Variables:
-          SOURCEPHONE: !Ref SourcePhone
+          SOURCEPHONE: !Ref SourcePhoneNumber
           CONTACTFLOW: !Ref ContactFlowId
           CONNECTINSTANCE: !Ref ConnectInstance
+  CallDoctorLambdaTriggerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CallDoctorLambdaTrigger.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: connect.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub
+        - arn:aws:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstance}
+        - { ConnectInstance: !Ref ConnectInstance }
   CallDoctorLambdaTriggerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -71,7 +81,6 @@ Resources:
               - 
                 Effect: "Allow"
                 Action:
-                  - "connect:*"
                   - "logs:*"
                 Resource: "*"
   CallDoctorLambdaTriggerLogs:
@@ -80,3 +89,7 @@ Resources:
       LogGroupName: 
         Fn::Join: ["/", ["/aws/lambda", {"Ref": "CallDoctorLambdaTrigger"}]]
       RetentionInDays: 1
+Outputs:
+  CallDoctorLambdaArn:
+    Description: Arn for Call Doctor Lambda
+    Value: !GetAtt CallDoctorLambdaTrigger.Arn
