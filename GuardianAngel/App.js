@@ -2,11 +2,12 @@ import React from 'react';
 import { StyleSheet, Text, View, Slider, TimerMixin } from 'react-native';
 import Amplify, { PubSub, Auth } from 'aws-amplify';
 import { AWSIoTProvider } from '@aws-amplify/pubsub/lib/Providers';
+import { configData } from './gaconfig';
 
 Amplify.configure({
 	Auth: {
-		identityPoolId: 'us-east-1:74eef97c-0a74-4267-8fbc-fa6fcedcef90',
-		region: 'us-east-1',
+		identityPoolId: configData.identityPoolId,
+		region: configData.region,
 		mandatorySignIn: false,
 	}
 });
@@ -23,8 +24,8 @@ Auth.currentUserInfo().then((info) => {
 
 
 Amplify.addPluggable(new AWSIoTProvider({
-     aws_pubsub_region: 'us-east-1',
-     aws_pubsub_endpoint: 'wss://a2wo5aphjz787n-ats.iot.us-east-1.amazonaws.com/mqtt'
+     aws_pubsub_region: configData.region,
+     aws_pubsub_endpoint: configData.pubSubEndpoint
 }));
 
 
