@@ -78,7 +78,9 @@ Resources:
                   - "s3:ListBucket"
                   - "s3:ListBucketMultipartUploads"
                   - "s3:PutObject"
-                Resource: !GetAtt SugarMonitorS3.Arn
+                Resource:
+                  - !Sub '${SugarMonitorS3.Arn}/*'
+                  - !GetAtt SugarMonitorS3.Arn
   SugarMonitorS3:
     Type: AWS::S3::Bucket
   SugarMonitorKinesisAnalytics:
@@ -257,7 +259,7 @@ Resources:
               pID = patientData['PatientID']
               print(pID)
               # get list of Patients from S3 json file
-              key = pID + '.json'
+              key = 'private/' + pID + '/config.json'
               response = s3.Object(bucket, key).get()
               patRecJson = response['Body'].read().decode('utf-8')
               json_content = json.loads(patRecJson)
@@ -301,16 +303,17 @@ Resources:
                       "doctorPhoneNumber": doctorN
                     }
                 )
-              return {
-                  'statusCode': 200
-              }
+              output = []
+              for record in event['records']:
+                output.append({'recordId': record['recordId'], 'result': 'Ok'})
+              return { 'records': output }
       Runtime: "python3.7"
       Timeout: 25
       Environment:
         Variables:
           BUCKET: !GetAtt SugarMonitorPatientsS3.Arn 
           SOURCEPHONE: !Ref SourcePhoneNumber
-          CONTACTFLOW: !Ref ContactFlowId
+          CONTACTFLOWID: !Ref ContactFlowId
           CONNECTINSTANCE: !Ref ConnectInstance
   SugarMonitorLambdaTriggerRole:
     Type: AWS::IAM::Role
@@ -344,7 +347,9 @@ Resources:
                   - "s3:ListBucket"
                   - "s3:ListBucketMultipartUploads"
                   - "s3:PutObject"
-                Resource: !GetAtt SugarMonitorPatientsS3.Arn
+                Resource:
+                  - !Sub '${SugarMonitorPatientsS3.Arn}/*'
+                  - !GetAtt SugarMonitorPatientsS3.Arn
   SugarMonitorLambdaTriggerLogs:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -353,6 +358,15 @@ Resources:
       RetentionInDays: 1
   SugarMonitorPatientsS3:
     Type: AWS::S3::Bucket
+    Properties:
+      CorsConfiguration:
+        CorsRules:
+        - AllowedOrigins: ['*']
+          AllowedMethods: [HEAD, GET, PUT, POST, DELETE]
+          MaxAge: '3000'
+          AllowedHeaders: ['*']
+          ExposedHeaders: [ETag, x-amz-server-side-encryption, x-amz-request-id, x-amz-id-2]
+          Id: amplifyAccess
   SugarMonitorIdPool:
     Type: "AWS::Cognito::IdentityPool"
     Properties:
@@ -392,9 +406,80 @@ Resources:
                   - "cognito-identity:*"
                   - "iot:*"
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${SugarMonitorPatientsS3.Arn}/private/${!cognito-identity.amazonaws.com:sub}/*'
+                  - !Sub '${SugarMonitorPatientsS3.Arn}/private/${!cognito-identity.amazonaws.com:sub}'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${SugarMonitorPatientsS3.Arn}'
+  IotEndpointProviderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "callconnect"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action:
+                  - iot:DescribeEndpoint
+                Resource: "*"
+  IotEndpointProvider:
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      Timeout: 3
+      Runtime: "python3.7"
+      Handler: "index.handler"
+      Role: !GetAtt IotEndpointProviderRole.Arn
+      Code:
+        ZipFile: >
+          import boto3
+
+          import json
+          
+          from botocore.vendored import requests
+          
+          def handler(event, context):
+            client = boto3.client('iot')
+            val = client.describe_endpoint()
+            response_body = {
+                "Status": "SUCCESS",
+                'Reason': 'See the details in CloudWatch Log Stream',
+                'PhysicalResourceId': 'Custom Lambda Function',
+                'StackId': event['StackId'],
+                'RequestId': event['RequestId'],
+                'LogicalResourceId': event['LogicalResourceId'],
+                "Data": { "IotEndpointAddress": val['endpointAddress'] }
+            }
+            requests.put(event['ResponseURL'], data=json.dumps(response_body))
+
+  IotEndpoint:
+    Type: 'Custom::IotEndpoint'
+    Properties:
+      ServiceToken: !GetAtt IotEndpointProvider.Arn
 Outputs:
   IdPool:
     Description: Cognito IdPool
     Value: !Ref SugarMonitorIdPool 
-    Export:
-      Name: IdPool
+  PatientBucket:
+    Description: PatientBucket
+    Value: !Ref SugarMonitorPatientsS3 
+  IotEndpointAddress:
+    Value: !GetAtt IotEndpoint.IotEndpointAddress
