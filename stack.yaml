@@ -469,11 +469,84 @@ Resources:
                 "Data": { "IotEndpointAddress": val['endpointAddress'] }
             }
             requests.put(event['ResponseURL'], data=json.dumps(response_body))
-
   IotEndpoint:
     Type: 'Custom::IotEndpoint'
     Properties:
       ServiceToken: !GetAtt IotEndpointProvider.Arn
+  SugarMonitorGlueRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "glue.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action: "*"
+                Resource:
+                  - !Sub '${SugarMonitorS3.Arn}/*'
+                  - !GetAtt SugarMonitorS3.Arn
+              - 
+                Effect: "Allow"
+                Action:
+                  - "logs:*"
+                Resource: "*"
+              - 
+                Effect: "Allow"
+                Action:
+                  - "glue:*"
+                Resource: "*"
+  SugarMonitorGlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: sugarmonitorgluedb
+        Description: "Glue for patient data"
+  SugarMonitorGlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Role: !GetAtt SugarMonitorGlueRole.Arn
+      Schedule:
+        ScheduleExpression: 'cron(0/15 * ? * * *)'
+      DatabaseName: !Ref SugarMonitorGlueDatabase
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${SugarMonitorS3}'
+      SchemaChangePolicy:
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "LOG"
+      Configuration: "{\"Version\":1.0,\"CrawlerOutput\":{\"Partitions\":{\"AddOrUpdateBehavior\":\"InheritFromTable\"},\"Tables\":{\"AddOrUpdateBehavior\":\"MergeNewColumns\"}}}"
+  SugarMonitorGlueCrawlerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: 
+        Fn::Join: ["/", ["/aws-glue/crawlers", {"Ref": "SugarMonitorGlueCrawler"}]]
+      RetentionInDays: 1
+  AthenaNamedQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Database: !Ref SugarMonitorGlueDatabase
+      QueryString: !Sub
+        - 'select patientid, value, timestamp from ${S3Bucket} order by timestamp asc;'
+        - S3Bucket: !Join
+          - '_'
+          - !Split
+            - '-'
+            - !Ref SugarMonitorS3
 Outputs:
   IdPool:
     Description: Cognito IdPool
@@ -483,3 +556,5 @@ Outputs:
     Value: !Ref SugarMonitorPatientsS3 
   IotEndpointAddress:
     Value: !GetAtt IotEndpoint.IotEndpointAddress
+  AthenaNamedQuery:
+    Value: !Ref AthenaNamedQuery
