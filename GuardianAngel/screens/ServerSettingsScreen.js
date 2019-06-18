@@ -65,7 +65,7 @@ export default class SettingsScreen extends React.Component {
         /^(?:ap|cn|eu|us)-[a-z]*-[0-9]{1}\:[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}/g,
       ),
       pubsub: new RegExp(
-        /^[a-z0-9]{14}-ats\.iot\.(?:ap|cn|eu|us)-[a-z]*-[0-9]{1}\.amazonaws.com/g,
+        /^[a-z0-9]{14}(-ats)?\.iot\.(?:ap|cn|eu|us)-[a-z]*-[0-9]{1}\.amazonaws.com/g,
       ),
       bucket: new RegExp(
         /(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)/,
@@ -140,14 +140,14 @@ export default class SettingsScreen extends React.Component {
           value={this.state.idPool}
           onChangeText={value => this.handleChange({idPool: value})}
         />
-        <Text style={styles.formLabel}>PubSub</Text>
+        <Text style={styles.formLabel}>IotEndpointAddress</Text>
         <TextInput
           selectTextOnFocus={true}
           style={styles.formInput}
           value={this.state.pubsub}
           onChangeText={value => this.handleChange({pubsub: value})}
         />
-        <Text style={styles.formLabel}>User Bucket</Text>
+        <Text style={styles.formLabel}>PatientBucket</Text>
         <TextInput
           selectTextOnFocus={true}
           style={styles.formInput}

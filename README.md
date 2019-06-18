@@ -11,7 +11,7 @@ This app then sends the data to AWS.
 If telemetry data goes through rapid fluctuation, the patient will be called and asked about their health.  If the patient does not answer that they are "OK" or does not respond, a Doctor will be called and told of health problems with the patient.
 
 ![Architecture](./images/arch.png)
-
+ 
 # Components
 
 ## Required tools
@@ -19,7 +19,7 @@ If telemetry data goes through rapid fluctuation, the patient will be called and
 - AWS Account
 - 2 phone numbers (please read Amazon Connect restrictions below)
 - [AWS CLI](https://aws.amazon.com/cli/)
-- An android phone with the availab
+- An android or iOS phone or an emulator/simulator
 
 ## Services
 The demo is constructed using the following services:
@@ -32,11 +32,10 @@ The demo is constructed using the following services:
 - [Amazon Kinesis Data Analytics](https://aws.amazon.com/kinesis/data-analytics/)
 - [AWS Lambda](https://aws.amazon.com/lambda/)
 - [Amazon S3](https://aws.amazon.com/s3/)
-- [AWS Glue](https://aws.amazon.com/glue/)*
-- [Amazon Athena](https://aws.amazon.com/athena/)*
-- [Amazon Quicksight](https://aws.amazon.com/quicksight/)*
+- [AWS Glue](https://aws.amazon.com/glue/)
+- [Amazon Athena](https://aws.amazon.com/athena/)
+- [Amazon Quicksight](https://aws.amazon.com/quicksight/)
 
-* not yet implemented
 
 ## SDKs
 
@@ -70,7 +69,7 @@ You can place calls to the following dialing codes when you create a new instanc
 
 ## Regions
 
-For the full demo to work we are restricted to the following  regions
+For the full demo to work you are restricted to the following regions
 
 - US East (N. Virginia)
 - US West (Oregon)

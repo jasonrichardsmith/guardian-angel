@@ -10,7 +10,7 @@ Due to dependencies within this system we will need to build the interconnected 
 
 ### Build out Amazon Connect instance
 
-First you will want to access the Amazon Connect Console](https://console.aws.amazon.com/connect).
+First you will want to access the [Amazon Connect Console](https://console.aws.amazon.com/connect).
 
 If you have already created an instance you can "Add an Instance", if you have not you will see the following screen, where you can click "Get Started".
 
@@ -78,7 +78,7 @@ Click the "Import flow(beta)" in the dropdown menu next to "Save".
 
 ![connect14](./images/connect14.png)
 
-Choose the file in this repository  
+Choose the file in this repository
 
 ```bash
 contactflows/calldoctor.json
@@ -88,7 +88,9 @@ This should import a flow chart that looks similair to this:
 
 ![connect15](./images/connect15.png)
 
-**Save**
+**Be sure to "Save & Publish" not just save**
+
+![connect15.1](./images/connect15.1.png)
 
 Click on "Show addition flow information"
 
@@ -152,7 +154,7 @@ aws cloudformation describe-stack --stack-name guardianangel-doctor \
 
 ## Step 5
 
-### Create the oLex Bot
+### Create the Lex Bot
 
 You can deploy Lex Bot by running.
 ```bash
@@ -191,7 +193,9 @@ Choose the file
 ```bash
 contactflows/callpatient.json
 ```
-**Save**
+**Be sure to "Save & Publish" not just save**
+
+![connect15.1](./images/connect15.1.png)
 
 Click on "Show addition flow information"
 
@@ -208,7 +212,7 @@ arn:aws:connect:us-east-1:123456789012:instance/{this is your instance id}/conta
 ## Step 7
  
 ### Deploy the remaining stack
- 
+  
 To deploy the remaining stack open the **stack.json** file and enter the fields we saved earlier.  We are using the call patient flow from Step 6!
 
 
@@ -219,5 +223,63 @@ aws cloudformation create-stack --template-body file://stack.yaml \
 	--capabilities CAPABILITY_IAM --stack-name guardianangel-stack \
 	--region us-east-1 --parameters file://stack.json
 ```
+
+When the stack is finished deploying we will need to retrieve some final parameters to integrate our mobile application.
+
+```bash
+aws cloudformation describe-stacks --stack-name ga-test2 --region us-east-1 --query 'Stacks[0].Outputs'
+```
+
+## Step 8
+
+### Building Quicksight
+[Sign up for Quicksight](https://docs.aws.amazon.com/quicksight/latest/user/setup-new-quicksight-account.html)
+
+Go to quicksight in your console.
+
+## Step 9
+
+### Running the mobile App
+
+Source for the mobile application can be found in the GuardianAngel folder
+
+There are several options for running the mobile application.
+
+1. If you have expo installed you can run it with the [expo cli](https://docs.expo.io/versions/latest/workflow/up-and-running/)
+2. You can build from source yourself with [expo](https://docs.expo.io/versions/latest/distribution/building-standalone-apps/)
+3. You can utilize the prebuilt apk under [releases](https://github.com/jasonrichardsmith/guardian-angel/releases) and [load the application with adb]().
+
+### Configuring the mobile app
+
+Once the app is running you will need to add the server settings that cloudformation had provided on the last stack deployment.
+
+Click the server settings button.
+
+![connect19](./images/connect19.png)
+
+Enter in the values from the stack.
+
+
+![connect20](./images/connect20.png)
+
+If the information was entered in correctly you will be sending data to your newly built system.
+
+We now need to add the contact information for the "Patient" and "The Doctor"
+
+Click on "User Settings" and fill the fields with names and valid phone numbers.
+
+![connect21](./images/connect21.png)
+
+And click save.
+
+This information will be saved to S3.
+
+# Triggering a patient call
+
+Leave the application running for a few minutes.
+
+This establishes the baseline of "normal" and the anamoly detection will trigger when values vary from this baseline.
+
+Then you can trigger a call to your phone by moving the slider.
 
 

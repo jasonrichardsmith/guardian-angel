@@ -93,8 +93,8 @@ export default class HomeScreen extends React.Component {
       if (!this.state.needsSettings) {
         this.awsBootstrap();
       }
-      //let timer = setInterval(this.tick, 1000);
-      //this.setState({timer})
+      let timer = setInterval(this.tick, 1000);
+      this.setState({timer})
     });
   }
 
